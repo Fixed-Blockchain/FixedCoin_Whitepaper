@@ -6,7 +6,8 @@
 
 The v30 edition explains the historical mainnet rules, the activated transition
 at block **52,560**, and the difficulty and issuance schedule now in effect. Its
-code references are pinned to the published FixedCoin Core v30.0.0 source.
+technical appendix gives the exact ASERT V2 and emission calculations. Code
+references are pinned to the published FixedCoin Core v30.0.0 source.
 
 ## Build
 

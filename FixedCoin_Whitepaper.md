@@ -26,6 +26,7 @@ FixedCoin Core v30.0.0 is the mandatory baseline for the active mainnet rules. N
 4. Difficulty adjustment
 5. Validation, frozen output and wallets
 6. Current operator guidance and references
+7. Appendix A: exact consensus mathematics
 
 This document describes the rules in the published v30.0.0 source. The source code defines the exact validation behavior; the mathematical target formula below is explanatory. All monetary values are expressed in FIX unless stated otherwise. [1]
 
@@ -103,7 +104,7 @@ At the target cadence, a 4,200-block interval is about 29 days. Actual duration 
 
 The sum of permitted subsidies from genesis through block 52,559 is **9,997.47652440 FIX**. This is a calculated allowance, not a claim that every reward was collected or that this amount circulates. It includes the unspendable genesis reward and does not subtract frozen outputs, lost keys or unclaimed rewards.
 
-The future budget is **21,000 - 9,997.47652440 = 11,002.52347560 FIX**. v30 uses this historical allowance to determine the new reward; it does not use an explorer's rounded supply figure or the current UTXO balance. Transaction fees are transfers of existing coins, not new subsidy. [3]
+The future budget is **21,000 - 9,997.47652440 = 11,002.52347560 FIX**. v30 uses this historical allowance to determine the new reward; it does not use an explorer's rounded supply figure or the current UTXO balance. Transaction fees are transfers of existing coins, not new subsidy. Appendix A gives the exact base-unit calculation. [3]
 
 <!-- pagebreak -->
 
@@ -113,9 +114,11 @@ From block 52,560, the initial subsidy is **10,466,639 base units (0.10466639 FI
 
 ```text
 For h >= 52,560:
-  era = floor((h - 52,560) / 52,560)
-  subsidy(h) = 10466639 >> era  (in base units)
+  k = floor((h - 52,560) / 52,560)
+  subsidy(h) = floor(10466639 / 2^k)  (in base units)
 ```
+
+The table numbers schedule periods from 1, while the formula uses `k = 0` for the first period. The subsidy becomes zero when the integer result falls below one base unit.
 
 | Era | Block heights | Reward (FIX) | Cumulative permitted FIX |
 |---:|---|---:|---:|
@@ -177,7 +180,7 @@ next_target approximately = T_ref * 2^(time_error / 86400)
 
 A larger target means lower difficulty. Blocks ahead of the target schedule produce a negative time error and higher difficulty; blocks behind it produce a positive time error and lower difficulty. The 24-hour half-life is the response scale: adjustment is calculated for each block, not once per day.
 
-Consensus uses deterministic integer arithmetic, not floating-point exponentiation. V2 uses a 16-bit fractional exponent, floor decomposition for negative exponents, the ASERT polynomial approximation, and a 320-bit multiplication intermediate. It bounds the result between 1 and the proof-of-work limit, then encodes the compact target. The exact operations and rounding are defined in `CalculateASERTV2`. [4]
+Consensus uses deterministic integer arithmetic, not floating-point exponentiation. V2 uses a 16-bit fractional exponent, floor decomposition for negative exponents, the ASERT polynomial approximation, and a 320-bit multiplication intermediate. It bounds the result between 1 and the proof-of-work limit, then encodes the compact target. Appendix A reproduces the exact calculation; `CalculateASERTV2` remains the authoritative implementation. [4]
 
 ### Reorganizations and limits
 
@@ -219,7 +222,7 @@ This whitepaper therefore does not assign a fixed circulating-supply percentage 
 
 ### Wallet and software continuity
 
-The v30 desktop wallet uses **Qt 6.8.4**, replacing Qt 5. Core also updates dependencies and includes targeted fixes for memory bounds, log rate limiting and costly validation paths. These software improvements take effect when installed; the consensus changes wait for their activation height.
+The v30 desktop wallet uses **Qt 6.8.4**, replacing Qt 5. Core also updates dependencies and includes targeted fixes for memory bounds, log rate limiting and costly validation paths. These software improvements take effect when installed; the consensus changes became active at block 52,560.
 
 Existing addresses, keys, wallet balances, genesis and transaction formats are preserved. Descriptor and legacy wallets remain supported. Backups and normal upgrade care are still required; the upgrade does not transfer funds to a replacement token or ask users to disclose recovery material. [1, 7]
 
@@ -246,6 +249,106 @@ Miners should confirm that their pools use a compatible v30 node. Pools and exch
 Use the official source repository and releases. The configured DNS seed is `dnsseed.fixedcoin.org`; seeds assist peer discovery and are not trusted authorities for block validity. Mainnet P2P defaults to port **24768**, and RPC to **24767**. Keep authenticated RPC access restricted to local or explicitly trusted systems. [2, 6]
 
 Project: [fixedcoin.org](https://fixedcoin.org/) | Support: [help@fixedcoin.org](mailto:help@fixedcoin.org)
+
+<!-- pagebreak -->
+
+## Appendix A. Exact consensus mathematics
+
+This appendix makes the active v30 calculations independently reproducible. All divisions and floors below operate on non-negative integers unless a signed rounding rule is stated explicitly. The published source remains authoritative for serialization, compact-target encoding and historical edge cases. [2, 3, 4]
+
+### Proof of work and chain selection
+
+Decode the compact `nBits` field into the target integer `T`. A proof-of-work header is valid only when:
+
+```text
+0 < T <= powLimit
+uint256(SHA256d(block_header)) <= T
+```
+
+A lower target requires more expected hashes. The work represented by a valid target and the cumulative work of a chain are:
+
+```text
+work(T) = floor(2^256 / (T + 1))
+chain_work = sum(work(T_i)) over all blocks in the chain
+```
+
+Nodes select the valid chain with the greatest cumulative work, not simply the chain with the greatest height. Compact encoding quantizes targets, so displayed difficulty and the ideal exponential relationship can differ slightly from the exact encoded result.
+
+### Exact ASERT V2 arithmetic
+
+Let `H = 52,560`, let `a = H - 1` be the branch-specific anchor, and let `h > H` be the candidate height. `t(k)` is the block-header timestamp at height `k`. It is not Median Time Past; block timestamps remain subject to the protocol's timestamp-validity rules.
+
+```text
+delta = t(h - 1) - t(a) - 600 * ((h - 1) - a)
+Q = 65,536
+L = 86,400
+
+e = trunc_toward_zero(delta * Q / L)
+q = floor(e / Q)
+f = e - q * Q, where 0 <= f < Q
+```
+
+The fixed-point polynomial factor is:
+
+```text
+P(f) = Q + floor((
+    195766423245049 * f
+  + 971821376 * f^2
+  + 5127 * f^3
+  + 2^47) / 2^48)
+```
+
+The unencoded target is then:
+
+```text
+T_raw = floor(T_ref * P(f) * 2^q / Q)
+T_next = clamp(T_raw, 1, powLimit)
+```
+
+The implementation uses a 320-bit intermediate for `T_ref * P(f)`. It returns `powLimit` directly when `delta >= 256 * L`, and target `1` when `delta <= -256 * L`. The result is finally encoded into compact `nBits`. For the activation block itself, the compact value is copied exactly: `nBits(H) = nBits(H - 1)`.
+
+Because difficulty is inversely proportional to target, an error of `+L` ideally doubles the target and halves difficulty; an error of `-L` ideally halves the target and doubles difficulty. Miners can influence header timestamps only within accepted timestamp rules. ASERT targets cadence but does not provide finality or guarantee a particular network hashrate.
+
+### Exact v30 reward derivation
+
+Let `C` be the 21,000 FIX limit in base units, `L(H)` the authorized historical subsidy through block `H - 1`, and `I` the new halving interval:
+
+```text
+H = 52,560
+I = 52,560 blocks
+C = 21,000 * 100,000,000 = 2,100,000,000,000 units
+
+L(H) = sum(legacy_subsidy(h), h = 0 to H - 1)
+     = 999,747,652,440 units
+
+B = C - L(H) = 1,100,252,347,560 units
+```
+
+For an initial integer reward `r`, its complete future schedule is:
+
+```text
+F(r) = I * sum(floor(r / 2^k), k = 0 to infinity)
+
+R = max { r in integers, r >= 0 : F(r) <= B }
+  = 10,466,639 units
+```
+
+The boundary calculation is exact:
+
+```text
+F(R)     = 1,100,252,250,720 units
+L(H)+F(R)= 2,099,999,903,160 units
+C-total  = 96,840 units
+
+F(R + 1) = 1,100,252,513,520 units
+F(R + 1) - B = 165,960 units
+```
+
+Therefore `R = 0.10466639 FIX` is the greatest initial base-unit reward whose complete integer-rounded schedule stays within the limit. Increasing it by one base unit would exceed the remaining budget.
+
+### Historical boundary
+
+For the initial three-block retarget regime, the observed 1,800-second span is clamped to 450 through 7,200 seconds before scaling the previous target and applying `powLimit`. From height 1,000 through 52,559, FixedCoin preserves its historical ASERT arithmetic exactly. That legacy arithmetic is not replaced by the V2 equations above; independent validators must retain the pinned historical implementation when validating those blocks. [4]
 
 ### References
 

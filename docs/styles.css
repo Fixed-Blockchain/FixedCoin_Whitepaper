@@ -107,7 +107,18 @@ footer strong { color: white; font-size: 1.1rem; }
   .reading-layout { grid-template-columns: 1fr; gap: 18px; }
   .contents { position: static; }
   .js .contents { display: none; }
-  .js .contents.open { display: grid; }
+  .js .contents.open {
+    position: fixed;
+    z-index: 19;
+    top: 86px;
+    right: 20px;
+    left: 20px;
+    display: grid;
+    max-height: calc(100vh - 106px);
+    overflow-y: auto;
+    background: white;
+    box-shadow: 0 22px 65px rgba(7,19,30,.24);
+  }
   .nav-toggle { display: inline-flex; }
   .header-links { display: none; }
 }

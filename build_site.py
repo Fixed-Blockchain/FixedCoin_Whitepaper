@@ -104,6 +104,7 @@ def page(article: str) -> str:
         <a href="#4-difficulty-adjustment">4. Difficulty adjustment</a>
         <a href="#5-validation-frozen-output-and-wallets">5. Validation and wallets</a>
         <a href="#6-current-operator-guidance-and-references">6. Operator guidance</a>
+        <a href="#appendix-a-exact-consensus-mathematics">Appendix A. Exact mathematics</a>
         <div class="contents-meta">
           <span>Edition</span>
           <strong>7 November 2026</strong>
