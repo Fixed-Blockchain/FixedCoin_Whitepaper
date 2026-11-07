@@ -16,7 +16,7 @@ if (toggle && contents) {
 
 const navLinks = [...document.querySelectorAll('.contents > a')];
 const sections = navLinks
-  .map((link) => document.querySelector(link.getAttribute('href')))
+  .map((link) => document.getElementById(link.hash.slice(1)))
   .filter(Boolean);
 
 if ('IntersectionObserver' in window && sections.length) {
